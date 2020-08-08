@@ -27,7 +27,7 @@ namespace Microsoft.CodeAnalysis.LanguageServer
     internal sealed class LanguageServerProtocol : AbstractRequestHandlerProvider
     {
         [ImportingConstructor]
-        [Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
+        [Obsolete(MefConstruction.ImportingConstructorMessage, error: false)]
         public LanguageServerProtocol([ImportMany] IEnumerable<Lazy<IRequestHandler, IRequestHandlerMetadata>> requestHandlers)
             : base(requestHandlers)
         {

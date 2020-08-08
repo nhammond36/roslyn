@@ -24,7 +24,7 @@ namespace Microsoft.CodeAnalysis.LanguageServer.Handler
     internal class FormatDocumentOnTypeHandler : AbstractRequestHandler<DocumentOnTypeFormattingParams, TextEdit[]>
     {
         [ImportingConstructor]
-        [Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
+        //[Obsolete(MefConstruction.ImportingConstructorMessage, error: true)]
         public FormatDocumentOnTypeHandler(ILspSolutionProvider solutionProvider) : base(solutionProvider)
         {
         }
