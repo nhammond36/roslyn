@@ -197,13 +197,13 @@ namespace BuildValidator
                 using var _ = logger.BeginScope("");
 
                 var pdbReader = pdbReaderProvider.GetMetadataReader();
+                var optionsReader = new CompilationOptionsReader(pdbReader, originalPeReader);
 
                 var compilation = await buildConstructor.CreateCompilationAsync(
-                    pdbReader,
-                    originalPeReader,
+                    optionsReader,
                     Path.GetFileNameWithoutExtension(originalBinary.Name)).ConfigureAwait(false);
 
-                var compilationDiff = CompilationDiff.Create(originalBinary, originalPeReader, pdbReader, compilation, GetDebugEntryPoint(), options);
+                var compilationDiff = CompilationDiff.Create(originalBinary, optionsReader, compilation, GetDebugEntryPoint(), options);
                 logger.LogInformation(compilationDiff?.AreEqual == true ? "Verification succeeded" : "Verification failed");
                 return compilationDiff;
 

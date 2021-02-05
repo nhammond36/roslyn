@@ -70,8 +70,8 @@ namespace BuildValidator
         public static readonly Guid EmbeddedSourceGuid = new Guid("0E8A571B-6926-466E-B4AD-8AB04611F5FE");
         public static readonly Guid SourceLinkGuid = new Guid("CC110556-A091-4D38-9FEC-25AB9A351A6A");
 
-        private readonly MetadataReader _pdbReader;
-        private readonly PEReader _peReader;
+        public MetadataReader PdbReader { get; }
+        public PEReader PeReader { get; }
 
         private MetadataCompilationOptions? _metadataCompilationOptions;
         private ImmutableArray<MetadataReferenceInfo> _metadataReferenceInfo;
@@ -79,8 +79,8 @@ namespace BuildValidator
 
         public CompilationOptionsReader(MetadataReader pdbReader, PEReader peReader)
         {
-            _pdbReader = pdbReader;
-            _peReader = peReader;
+            PdbReader = pdbReader;
+            PeReader = peReader;
         }
 
         public BlobReader GetMetadataCompilationOptionsBlobReader()
@@ -146,7 +146,7 @@ namespace BuildValidator
         }
 
         public OutputKind GetOutputKind() =>
-            (_pdbReader.DebugMetadataHeader is { } header && !header.EntryPoint.IsNil)
+            (PdbReader.DebugMetadataHeader is { } header && !header.EntryPoint.IsNil)
             ? OutputKind.ConsoleApplication
             : OutputKind.DynamicallyLinkedLibrary;
 
@@ -160,13 +160,13 @@ namespace BuildValidator
 
         private (string MainTypeName, string MainMethodName)? GetMainMethodInfo()
         {
-            if (!(_pdbReader.DebugMetadataHeader is { } header) ||
+            if (!(PdbReader.DebugMetadataHeader is { } header) ||
                 header.EntryPoint.IsNil)
             {
                 return null;
             }
 
-            var mdReader = _peReader.GetMetadataReader();
+            var mdReader = PeReader.GetMetadataReader();
             var methodDefinition = mdReader.GetMethodDefinition(header.EntryPoint);
             var methodName = mdReader.GetString(methodDefinition.Name);
             var typeHandle = methodDefinition.GetDeclaringType();
@@ -183,10 +183,10 @@ namespace BuildValidator
 
         private SourceText? ResolveEmbeddedSource(DocumentHandle document, SourceHashAlgorithm hashAlgorithm, Encoding encoding)
         {
-            byte[] bytes = (from handle in _pdbReader.GetCustomDebugInformation(document)
-                            let cdi = _pdbReader.GetCustomDebugInformation(handle)
-                            where _pdbReader.GetGuid(cdi.Kind) == EmbeddedSourceGuid
-                            select _pdbReader.GetBlobBytes(cdi.Value)).SingleOrDefault();
+            byte[] bytes = (from handle in PdbReader.GetCustomDebugInformation(document)
+                            let cdi = PdbReader.GetCustomDebugInformation(handle)
+                            where PdbReader.GetGuid(cdi.Kind) == EmbeddedSourceGuid
+                            select PdbReader.GetBlobBytes(cdi.Value)).SingleOrDefault();
 
             if (bytes == null)
             {
@@ -222,7 +222,7 @@ namespace BuildValidator
 
         public byte[]? GetPublicKey()
         {
-            var metadataReader = _peReader.GetMetadataReader();
+            var metadataReader = PeReader.GetMetadataReader();
             var blob = metadataReader.GetAssemblyDefinition().PublicKey;
             if (blob.IsNil)
             {
@@ -235,9 +235,9 @@ namespace BuildValidator
 
         public unsafe ResourceDescription[]? GetManifestResources()
         {
-            var metadataReader = _peReader.GetMetadataReader();
-            if (_peReader.PEHeaders.CorHeader is not { } corHeader
-                || !_peReader.PEHeaders.TryGetDirectoryOffset(corHeader.ResourcesDirectory, out var resourcesOffset))
+            var metadataReader = PeReader.GetMetadataReader();
+            if (PeReader.PEHeaders.CorHeader is not { } corHeader
+                || !PeReader.PEHeaders.TryGetDirectoryOffset(corHeader.ResourcesDirectory, out var resourcesOffset))
             {
                 return null;
             }
@@ -247,7 +247,7 @@ namespace BuildValidator
                 var resource = metadataReader.GetManifestResource(handle);
                 var name = metadataReader.GetString(resource.Name);
 
-                var resourceStart = _peReader.GetEntireImage().Pointer + resourcesOffset + resource.Offset;
+                var resourceStart = PeReader.GetEntireImage().Pointer + resourcesOffset + resource.Offset;
                 var length = *(int*)resourceStart;
                 var contentPtr = resourceStart + sizeof(int);
                 var content = new byte[length];
@@ -270,18 +270,18 @@ namespace BuildValidator
                     .GetUniqueOption("source-file-count"));
 
             var builder = ImmutableArray.CreateBuilder<SourceFileInfo>(sourceFileCount);
-            foreach (var documentHandle in _pdbReader.Documents.Take(sourceFileCount))
+            foreach (var documentHandle in PdbReader.Documents.Take(sourceFileCount))
             {
-                var document = _pdbReader.GetDocument(documentHandle);
-                var name = _pdbReader.GetString(document.Name);
+                var document = PdbReader.GetDocument(documentHandle);
+                var name = PdbReader.GetString(document.Name);
 
-                var hashAlgorithmGuid = _pdbReader.GetGuid(document.HashAlgorithm);
+                var hashAlgorithmGuid = PdbReader.GetGuid(document.HashAlgorithm);
                 var hashAlgorithm =
                     hashAlgorithmGuid == HashAlgorithmSha1 ? SourceHashAlgorithm.Sha1
                     : hashAlgorithmGuid == HashAlgorithmSha256 ? SourceHashAlgorithm.Sha256
                     : SourceHashAlgorithm.None;
 
-                var hash = _pdbReader.GetBlobBytes(document.Hash);
+                var hash = PdbReader.GetBlobBytes(document.Hash);
                 var embeddedContent = ResolveEmbeddedSource(documentHandle, hashAlgorithm, encoding);
 
                 builder.Add(new SourceFileInfo(name, hashAlgorithm, hash, embeddedContent));
@@ -347,10 +347,10 @@ namespace BuildValidator
 
         private bool TryGetCustomDebugInformationBlobReader(Guid infoGuid, out BlobReader blobReader)
         {
-            var blobs = from cdiHandle in _pdbReader.GetCustomDebugInformation(EntityHandle.ModuleDefinition)
-                        let cdi = _pdbReader.GetCustomDebugInformation(cdiHandle)
-                        where _pdbReader.GetGuid(cdi.Kind) == infoGuid
-                        select _pdbReader.GetBlobReader(cdi.Value);
+            var blobs = from cdiHandle in PdbReader.GetCustomDebugInformation(EntityHandle.ModuleDefinition)
+                        let cdi = PdbReader.GetCustomDebugInformation(cdiHandle)
+                        where PdbReader.GetGuid(cdi.Kind) == infoGuid
+                        select PdbReader.GetBlobReader(cdi.Value);
 
             if (blobs.Any())
             {

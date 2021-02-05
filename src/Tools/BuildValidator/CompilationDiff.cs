@@ -51,7 +51,12 @@ namespace BuildValidator
             OriginalPath = originalPath;
         }
 
-        public static unsafe CompilationDiff Create(FileInfo originalBinaryPath, PEReader originalPeReader, MetadataReader originalPdbReader, Compilation producedCompilation, IMethodSymbol? debugEntryPoint, Options options)
+        public static unsafe CompilationDiff Create(
+            FileInfo originalBinaryPath,
+            CompilationOptionsReader optionsReader,
+            Compilation producedCompilation,
+            IMethodSymbol? debugEntryPoint,
+            Options options)
         {
             using var rebuildPeStream = new MemoryStream();
 
@@ -63,18 +68,18 @@ namespace BuildValidator
 
             // TODO: clean up usages of options reader.
             // TODO: probably extract these emit bits into "BuildConstructor".
-            var sourceLink = new CompilationOptionsReader(originalPdbReader, originalPeReader).GetSourceLinkUTF8();
+            var sourceLink = optionsReader.GetSourceLinkUTF8();
             var emitResult = producedCompilation.Emit(
                 peStream: rebuildPeStream,
                 pdbStream: null,
                 xmlDocumentationStream: null,
                 win32Resources: win32ResourceStream,
-                manifestResources: new CompilationOptionsReader(originalPdbReader, originalPeReader).GetManifestResources(),
+                manifestResources: optionsReader.GetManifestResources(),
                 options: new EmitOptions(
                     debugInformationFormat: DebugInformationFormat.Embedded, highEntropyVirtualAddressSpace: true),
                 debugEntryPoint: debugEntryPoint,
                 metadataPEStream: null,
-                pdbOptionsBlobReader: new CompilationOptionsReader(originalPdbReader, originalPeReader).GetMetadataCompilationOptionsBlobReader(),
+                pdbOptionsBlobReader: optionsReader.GetMetadataCompilationOptionsBlobReader(),
                 sourceLinkStream: sourceLink != null ? new MemoryStream(sourceLink) : null,
                 embeddedTexts: producedCompilation.SyntaxTrees
                     .Select(st => (path: st.FilePath, text: st.GetText()))
@@ -119,22 +124,21 @@ namespace BuildValidator
 
                         var originalPath = Path.Combine(assemblyDebugPath, "original");
                         var rebuildPath = Path.Combine(assemblyDebugPath, "rebuild");
-                        // var sourcesPath = Path.Combine(assemblyDebugPath, "sources");
+                        var sourcesPath = Path.Combine(assemblyDebugPath, "sources");
 
                         Directory.CreateDirectory(originalPath);
                         Directory.CreateDirectory(rebuildPath);
-                        // Directory.CreateDirectory(sourcesPath);
+                        Directory.CreateDirectory(sourcesPath);
 
-                        // TODO: include original and "ingested" sources somehow?
-                        // TODO: we need to use the ResolvedSources array to dump the source files properly
-                        // foreach (var tree in producedCompilation.SyntaxTrees)
-                        // {
-                        //     var sourceFilePath = Path.Combine(sourcesPath, Path.GetFileName(tree.FilePath));
-                        //     using var file = File.OpenWrite(sourceFilePath);
-                        //     var writer = new StreamWriter(file);
-                        //     tree.GetText().Write(writer);
-                        //     writer.Flush();
-                        // }
+                        // TODO: output source files should include the entire relative path instead of just the file name.
+                        foreach (var tree in producedCompilation.SyntaxTrees)
+                        {
+                            var sourceFilePath = Path.Combine(sourcesPath, Path.GetFileName(tree.FilePath));
+                            using var file = File.OpenWrite(sourceFilePath);
+                            var writer = new StreamWriter(file);
+                            tree.GetText().Write(writer);
+                            writer.Flush();
+                        }
 
                         var originalAssemblyPath = Path.Combine(originalPath, originalBinaryPath.Name);
                         File.WriteAllBytes(originalAssemblyPath, originalBytes);
@@ -144,15 +148,15 @@ namespace BuildValidator
 
                         var originalPeMdvPath = Path.Combine(originalPath, assemblyName + ".pe.mdv");
                         var originalPdbMdvPath = Path.Combine(originalPath, assemblyName + ".pdb.mdv");
-                        writeVisualizationToTempFile(originalPeMdvPath, originalPeReader.GetMetadataReader());
-                        writeVisualizationToTempFile(originalPdbMdvPath, originalPdbReader);
+                        writeVisualization(originalPeMdvPath, optionsReader.PeReader.GetMetadataReader());
+                        writeVisualization(originalPdbMdvPath, optionsReader.PdbReader);
 
                         var rebuildPeMdvPath = Path.Combine(rebuildPath, assemblyName + ".pe.mdv");
                         var rebuildPdbMdvPath = Path.Combine(rebuildPath, assemblyName + ".pdb.mdv");
                         fixed (byte* ptr = rebuildBytes)
                         {
                             var rebuildPeReader = new PEReader(ptr, rebuildBytes.Length);
-                            writeVisualizationToTempFile(rebuildPeMdvPath, rebuildPeReader.GetMetadataReader());
+                            writeVisualization(rebuildPeMdvPath, rebuildPeReader.GetMetadataReader());
 
                             if (rebuildPeReader.TryOpenAssociatedPortablePdb(
                                 rebuildAssemblyPath,
@@ -161,7 +165,7 @@ namespace BuildValidator
                                 out _) && provider is { })
                             {
                                 var rebuildPdbReader = provider.GetMetadataReader(MetadataReaderOptions.Default);
-                                writeVisualizationToTempFile(rebuildPdbMdvPath, rebuildPdbReader);
+                                writeVisualization(rebuildPdbMdvPath, rebuildPdbReader);
                             }
                         }
 
@@ -172,18 +176,14 @@ namespace BuildValidator
                         Process.Start(@"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\ildasm.exe", $@"{originalBinaryPath.FullName} /out={ildasmOriginalOutputPath}").WaitForExit();
                         Process.Start(@"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\ildasm.exe", $@"{rebuildAssemblyPath} /out={ildasmRebuildOutputPath}").WaitForExit();
 
-                        // todo: why are these paths bad?
-                        // File.WriteAllText($@"code --diff ""{originalPeMdvPath}"" ""{rebuildPeMdvPath}""", Path.Combine(assemblyDebugPath, "compare-pe.mdv.ps1"));
-                        // File.WriteAllText($@"code --diff ""{originalPdbMdvPath}"" ""{rebuildPdbMdvPath}""", Path.Combine(assemblyDebugPath, "compare-pdb.mdv.ps1"));
-                        // File.WriteAllText($@"code --diff ""{ildasmOriginalOutputPath}"" ""{ildasmRebuildOutputPath}""", Path.Combine(assemblyDebugPath, "compare-il.ps1"));
+                        File.WriteAllText(Path.Combine(assemblyDebugPath, "compare-pe.mdv.ps1"), $@"code --diff (Join-Path $PSScriptRoot ""{originalPeMdvPath.Substring(assemblyDebugPath.Length)}"") (Join-Path $PSScriptRoot ""{rebuildPeMdvPath.Substring(assemblyDebugPath.Length)}"")");
+                        File.WriteAllText(Path.Combine(assemblyDebugPath, "compare-pdb.mdv.ps1"), $@"code --diff (Join-Path $PSScriptRoot ""{originalPdbMdvPath.Substring(assemblyDebugPath.Length)}"") (Join-Path $PSScriptRoot ""{rebuildPdbMdvPath.Substring(assemblyDebugPath.Length)}"")");
+                        File.WriteAllText(Path.Combine(assemblyDebugPath, "compare-il.ps1"), $@"code --diff (Join-Path $PSScriptRoot ""{ildasmOriginalOutputPath.Substring(assemblyDebugPath.Length)}"") (Join-Path $PSScriptRoot ""{ildasmRebuildOutputPath.Substring(assemblyDebugPath.Length)}"")");
 
-                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, originalPeMdvPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, rebuildPeMdvPath)}""", Path.Combine(assemblyDebugPath, "compare-pe.mdv.ps1"));
-                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, originalPdbMdvPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, rebuildPdbMdvPath)}""", Path.Combine(assemblyDebugPath, "compare-pdb.mdv.ps1"));
-                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, ildasmOriginalOutputPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, ildasmRebuildOutputPath)}""", Path.Combine(assemblyDebugPath, "compare-il.ps1"));
-                        
                         if (options.OpenDiff)
                         {
-                            Process.Start("explorer", assemblyDebugPath);
+                            Console.WriteLine("Opening a pwsh window to where the compare scripts are located..");
+                            Process.Start(new ProcessStartInfo("pwsh") { WorkingDirectory = assemblyDebugPath, UseShellExecute = true });
                         }
                     }
                 }
@@ -195,7 +195,7 @@ namespace BuildValidator
                 return new CompilationDiff(emitResult.Diagnostics, originalBinaryPath.FullName);
             }
 
-            void writeVisualizationToTempFile(string outPath, MetadataReader pdbReader)
+            void writeVisualization(string outPath, MetadataReader pdbReader)
             {
                 using (var tempFile = File.OpenWrite(outPath))
                 {
