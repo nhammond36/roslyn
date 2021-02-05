@@ -11,6 +11,7 @@ namespace BuildValidator
 {
     internal record Options(
         string AssembliesPath,
+        string SourcePath,
         bool Verbose,
         bool Quiet,
         bool OpenDiff,

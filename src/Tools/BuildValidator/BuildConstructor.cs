@@ -63,6 +63,7 @@ namespace BuildValidator
             throw new InvalidDataException("Did not find language in compilation options");
         }
 
+        // TODO: log metadata references after resolving, including the resolved path
         private ImmutableArray<MetadataReferenceInfo> GetMetadataReferenceInfos(CompilationOptionsReader compilationOptionsReader)
         {
             using var _ = _logger.BeginScope("Metadata References");
@@ -84,22 +85,18 @@ namespace BuildValidator
 
         private ImmutableArray<SourceFileInfo> GetSourceFileInfos(CompilationOptionsReader compilationOptionsReader, Encoding encoding)
         {
-            using var _ = _logger.BeginScope("Source Names");
-            var sourceFileInfos = compilationOptionsReader.GetSourceFileInfos(encoding);
-            var count = 0;
-            foreach (var sourceFileInfo in sourceFileInfos)
-            {
-                count++;
-                if (count >= 10)
-                {
-                    _logger.LogInformation($"... {sourceFileInfos.Length - count} more");
-                    break;
-                }
-                var hash = BitConverter.ToString(sourceFileInfo.Hash).Replace("-", "");
-                _logger.LogInformation($"{sourceFileInfo.SourceFileName} - {sourceFileInfo.HashAlgorithmDescription} - {hash}");
-            }
+            return compilationOptionsReader.GetSourceFileInfos(encoding);
+        }
 
-            return sourceFileInfos;
+        private void LogResolvedSources(ImmutableArray<ResolvedSource> resolvedSources)
+        {
+            using var _ = _logger.BeginScope("Source Names");
+            foreach (var resolvedSource in resolvedSources)
+            {
+                var sourceFileInfo = resolvedSource.SourceFileInfo;
+                var hash = BitConverter.ToString(sourceFileInfo.Hash).Replace("-", "");
+                _logger.LogInformation($@"""{resolvedSource.DisplayPath}"" - {sourceFileInfo.HashAlgorithmDescription} - {hash}");
+            }
         }
 
         private ImmutableArray<MetadataReference> ResolveMetadataReferences(ImmutableArray<MetadataReferenceInfo> referenceInfos)
@@ -126,14 +123,14 @@ namespace BuildValidator
             return sourceLinks;
         }
 
-        private async Task<ImmutableArray<(string SourceFilePath, SourceText SourceText)>> ResolveSourcesAsync(
+        private async Task<ImmutableArray<ResolvedSource>> ResolveSourcesAsync(
             ImmutableArray<SourceFileInfo> sourceFileInfos,
             ImmutableArray<SourceLink> sourceLinks,
             Encoding encoding)
         {
             _logger.LogInformation("Locating source files");
 
-            var tasks = new Task<(string SourceFilePath, SourceText SourceText)>[sourceFileInfos.Length];
+            var tasks = new Task<ResolvedSource>[sourceFileInfos.Length];
             for (int i = 0; i < sourceFileInfos.Length; i++)
             {
                 var sourceFileInfo = sourceFileInfos[i];
@@ -154,9 +151,11 @@ namespace BuildValidator
             var metadataReferences = ResolveMetadataReferences(metadataReferenceInfos); // TODO: improve perf
             var sourceLinks = compilationOptionsReader.GetSourceLinksOpt();
             var sources = await ResolveSourcesAsync(sourceFileInfos, sourceLinks, encoding).ConfigureAwait(false);
+            LogResolvedSources(sources);
+
             return CSharpCompilation.Create(
                 assemblyName,
-                syntaxTrees: sources.Select(s => CSharpSyntaxTree.ParseText(s.SourceText, options: parseOptions, path: s.SourceFilePath)).ToImmutableArray(),
+                syntaxTrees: sources.Select(s => CSharpSyntaxTree.ParseText(s.SourceText, options: parseOptions, path: s.SourceFileInfo.SourceFilePath)).ToImmutableArray(),
                 references: metadataReferences,
                 options: compilationOptions);
         }
@@ -264,6 +263,7 @@ namespace BuildValidator
         #endregion
 
         #region Visual Basic
+        // TODO: can we just make "get compilation options" and "create the compilation" virtual and share the rest?
         private async Task<Compilation> CreateVisualBasicCompilationAsync(CompilationOptionsReader compilationOptionsReader, string assemblyName)
         {
             var metadataReferenceInfos = GetMetadataReferenceInfos(compilationOptionsReader);
@@ -275,7 +275,7 @@ namespace BuildValidator
 
             return VisualBasicCompilation.Create(
                 assemblyName,
-                syntaxTrees: sources.Select(s => VisualBasicSyntaxTree.ParseText(s.SourceText, options: compilationOptions.ParseOptions, path: s.SourceFilePath)).ToImmutableArray(),
+                syntaxTrees: sources.Select(s => VisualBasicSyntaxTree.ParseText(s.SourceText, options: compilationOptions.ParseOptions, path: s.DisplayPath)).ToImmutableArray(),
                 references: metadataReferences,
                 options: compilationOptions);
         }

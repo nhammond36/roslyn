@@ -15,63 +15,63 @@ using Microsoft.Extensions.Logging;
 
 namespace BuildValidator
 {
+    internal record ResolvedSource(
+        string? OnDiskPath,
+        SourceText SourceText,
+        SourceFileInfo SourceFileInfo)
+    {
+        public string DisplayPath => OnDiskPath ?? ("[embedded]" + SourceFileInfo.SourceFilePath);
+    }
+
     internal class LocalSourceResolver
     {
+        private readonly Options _options;
         private readonly ILogger _logger;
-        private readonly HttpClient _httpClient;
 
-        public LocalSourceResolver(ILoggerFactory loggerFactory)
+        public LocalSourceResolver(Options options, ILoggerFactory loggerFactory)
         {
+            _options = options;
             _logger = loggerFactory.CreateLogger<LocalSourceResolver>();
-            _httpClient = new HttpClient();
         }
 
-        public Task<(string SourceFilePath, SourceText SourceText)> ResolveSourceAsync(SourceFileInfo sourceFileInfo, ImmutableArray<SourceLink> sourceLinks, Encoding encoding)
+        public Task<ResolvedSource> ResolveSourceAsync(SourceFileInfo sourceFileInfo, ImmutableArray<SourceLink> sourceLinks, Encoding encoding)
         {
-            var name = sourceFileInfo.SourceFilePath;
+            var pdbDocumentPath = sourceFileInfo.SourceFilePath;
 
-            // TODO: we need to try to fetch an embedded source from the PDB as a first resort
-            // user projects will need to fetch AssemblyInfo.cs, source generator outputs, etc.
+            // TODO: the logging for sources should say if it was embedded and otherwise what path it was loaded from.
             if (sourceFileInfo.EmbeddedText is { } embeddedText)
             {
-                return Task.FromResult((name, embeddedText));
-            }
-            else if (!File.Exists(name))
-            {
-                return ResolveHttpSourceAsync(sourceFileInfo, sourceLinks, encoding);
+                return Task.FromResult(new ResolvedSource(OnDiskPath: null, embeddedText, sourceFileInfo));
             }
             else
             {
-                using var fileStream = File.OpenRead(name);
-                var sourceText = SourceText.From(fileStream, encoding: encoding, checksumAlgorithm: SourceHashAlgorithm.Sha256, canBeEmbedded: false);
-                if (!sourceText.GetChecksum().AsSpan().SequenceEqual(sourceFileInfo.Hash))
-                {
-                    _logger.LogError($@"File ""{name}"" has incorrect hash");
-                }
-                return Task.FromResult((name, sourceText));
-            }
-
-            throw new FileNotFoundException(name);
-        }
-
-        private async Task<(string SourceFilePath, SourceText SourceText)> ResolveHttpSourceAsync(SourceFileInfo sourceFileInfo, ImmutableArray<SourceLink> sourceLinks, Encoding encoding)
-        {
-            if (!sourceLinks.IsDefault)
-            {
+                string? onDiskPath = null;
                 foreach (var link in sourceLinks)
                 {
                     if (sourceFileInfo.SourceFilePath.StartsWith(link.Prefix))
                     {
-                        var webPath = link.Replace + sourceFileInfo.SourceFilePath.Substring(link.Prefix.Length);
-                        // TODO: retry? handle 404s?
-                        var bytes = await _httpClient.GetByteArrayAsync(webPath).ConfigureAwait(false);
-                        // TODO: why don't we use the checksum algorithm from the SourceFileInfo
-                        return (sourceFileInfo.SourceFilePath, SourceText.From(bytes, bytes.Length, encoding, checksumAlgorithm: SourceHashAlgorithm.Sha256, canBeEmbedded: false));
+                        onDiskPath = Path.GetFullPath(Path.Combine(_options.SourcePath, pdbDocumentPath.Substring(link.Prefix.Length)));
+                        if (File.Exists(onDiskPath))
+                        {
+                            break;
+                        }
                     }
                 }
+
+                // if no source links exist to let us prefix the source path,
+                // then assume the file path in the pdb points to the on-disk location of the file.
+                onDiskPath ??= pdbDocumentPath;
+
+                using var fileStream = File.OpenRead(onDiskPath);
+                var sourceText = SourceText.From(fileStream, encoding: encoding, checksumAlgorithm: SourceHashAlgorithm.Sha256, canBeEmbedded: false);
+                if (!sourceText.GetChecksum().AsSpan().SequenceEqual(sourceFileInfo.Hash))
+                {
+                    _logger.LogError($@"File ""{onDiskPath}"" has incorrect hash");
+                }
+                return Task.FromResult(new ResolvedSource(onDiskPath, sourceText, sourceFileInfo));
             }
 
-            throw new FileNotFoundException($@"Could not find a source link matching file ""{sourceFileInfo.SourceFilePath}""");
+            throw new FileNotFoundException(pdbDocumentPath);
         }
     }
 }

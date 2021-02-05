@@ -85,10 +85,7 @@ namespace BuildValidator
             if (emitResult.Success)
             {
                 var originalBytes = File.ReadAllBytes(originalBinaryPath.FullName);
-
                 var rebuildBytes = rebuildPeStream.ToArray();
-                var rebuildOutputPath = Path.GetTempFileName();
-                File.WriteAllBytes(rebuildOutputPath, rebuildBytes);
 
                 var bytesEqual = originalBytes.SequenceEqual(rebuildBytes);
                 if (!bytesEqual)
@@ -116,12 +113,34 @@ namespace BuildValidator
                         }
                         Console.WriteLine($@"Writing diffs to ""{debugPath}""");
 
+
                         var assemblyName = Path.GetFileNameWithoutExtension(originalBinaryPath.Name);
-                        var originalPath = Path.Combine(debugPath, assemblyName, "original");
-                        var rebuildPath = Path.Combine(debugPath, assemblyName, "rebuild");
+                        var assemblyDebugPath = Path.Combine(debugPath, assemblyName);
+
+                        var originalPath = Path.Combine(assemblyDebugPath, "original");
+                        var rebuildPath = Path.Combine(assemblyDebugPath, "rebuild");
+                        // var sourcesPath = Path.Combine(assemblyDebugPath, "sources");
 
                         Directory.CreateDirectory(originalPath);
                         Directory.CreateDirectory(rebuildPath);
+                        // Directory.CreateDirectory(sourcesPath);
+
+                        // TODO: include original and "ingested" sources somehow?
+                        // TODO: we need to use the ResolvedSources array to dump the source files properly
+                        // foreach (var tree in producedCompilation.SyntaxTrees)
+                        // {
+                        //     var sourceFilePath = Path.Combine(sourcesPath, Path.GetFileName(tree.FilePath));
+                        //     using var file = File.OpenWrite(sourceFilePath);
+                        //     var writer = new StreamWriter(file);
+                        //     tree.GetText().Write(writer);
+                        //     writer.Flush();
+                        // }
+
+                        var originalAssemblyPath = Path.Combine(originalPath, originalBinaryPath.Name);
+                        File.WriteAllBytes(originalAssemblyPath, originalBytes);
+
+                        var rebuildAssemblyPath = Path.Combine(rebuildPath, originalBinaryPath.Name);
+                        File.WriteAllBytes(rebuildAssemblyPath, rebuildBytes);
 
                         var originalPeMdvPath = Path.Combine(originalPath, assemblyName + ".pe.mdv");
                         var originalPdbMdvPath = Path.Combine(originalPath, assemblyName + ".pdb.mdv");
@@ -136,7 +155,7 @@ namespace BuildValidator
                             writeVisualizationToTempFile(rebuildPeMdvPath, rebuildPeReader.GetMetadataReader());
 
                             if (rebuildPeReader.TryOpenAssociatedPortablePdb(
-                                rebuildOutputPath,
+                                rebuildAssemblyPath,
                                 path => File.Exists(path) ? File.OpenRead(path) : null,
                                 out var provider,
                                 out _) && provider is { })
@@ -146,22 +165,25 @@ namespace BuildValidator
                             }
                         }
 
-                        if (options.OpenDiff)
-                        {
-                            Process.Start(new ProcessStartInfo(@"code", $@"--diff ""{originalPeMdvPath}"" ""{rebuildPeMdvPath}""") { UseShellExecute = true });
-                            Process.Start(new ProcessStartInfo(@"code", $@"--diff ""{originalPdbMdvPath}"" ""{rebuildPdbMdvPath}""") { UseShellExecute = true });
-                        }
-
                         var ildasmOriginalOutputPath = Path.Combine(originalPath, assemblyName + ".il");
                         var ildasmRebuildOutputPath = Path.Combine(rebuildPath, assemblyName + ".il");
 
                         // TODO: can we bundle ildasm in with the utility?
                         Process.Start(@"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\ildasm.exe", $@"{originalBinaryPath.FullName} /out={ildasmOriginalOutputPath}").WaitForExit();
-                        Process.Start(@"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\ildasm.exe", $@"{rebuildOutputPath} /out={ildasmRebuildOutputPath}").WaitForExit();
+                        Process.Start(@"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\ildasm.exe", $@"{rebuildAssemblyPath} /out={ildasmRebuildOutputPath}").WaitForExit();
+
+                        // todo: why are these paths bad?
+                        // File.WriteAllText($@"code --diff ""{originalPeMdvPath}"" ""{rebuildPeMdvPath}""", Path.Combine(assemblyDebugPath, "compare-pe.mdv.ps1"));
+                        // File.WriteAllText($@"code --diff ""{originalPdbMdvPath}"" ""{rebuildPdbMdvPath}""", Path.Combine(assemblyDebugPath, "compare-pdb.mdv.ps1"));
+                        // File.WriteAllText($@"code --diff ""{ildasmOriginalOutputPath}"" ""{ildasmRebuildOutputPath}""", Path.Combine(assemblyDebugPath, "compare-il.ps1"));
+
+                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, originalPeMdvPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, rebuildPeMdvPath)}""", Path.Combine(assemblyDebugPath, "compare-pe.mdv.ps1"));
+                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, originalPdbMdvPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, rebuildPdbMdvPath)}""", Path.Combine(assemblyDebugPath, "compare-pdb.mdv.ps1"));
+                        // File.WriteAllText($@"code --diff ""{Path.GetRelativePath(assemblyDebugPath, ildasmOriginalOutputPath)}"" ""{Path.GetRelativePath(assemblyDebugPath, ildasmRebuildOutputPath)}""", Path.Combine(assemblyDebugPath, "compare-il.ps1"));
+                        
                         if (options.OpenDiff)
                         {
-                            // TODO: ideally we can avoid opening diffs when we already know files are equal
-                            Process.Start(new ProcessStartInfo("code", $@"--diff ""{ildasmOriginalOutputPath}"" ""{ildasmRebuildOutputPath}""") { UseShellExecute = true });
+                            Process.Start("explorer", assemblyDebugPath);
                         }
                     }
                 }

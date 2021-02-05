@@ -44,7 +44,10 @@ namespace BuildValidator
             {
                 new Option<string>(
                     "--assembliesPath", "Path to assemblies to rebuild"
-                ),
+                ) { IsRequired = true },
+                new Option<string>(
+                    "--sourcePath", "Path to sources to use in rebuild"
+                ) { IsRequired = true },
                 new Option<bool>(
                     "--verbose", "Output verbose log information"
                 ),
@@ -55,16 +58,16 @@ namespace BuildValidator
                     "--openDiff", "Open a diff tool when rebuild failures are found"
                 ),
                 new Option<string>(
-                    "--debugPath", "Path to output debug visualization of the rebuild"
+                    "--debugPath", "(optional) Path to output debug visualization of the rebuild"
                 )
             };
-            rootCommand.Handler = CommandHandler.Create<string, bool, bool, bool, string>(HandleCommandAsync);
+            rootCommand.Handler = CommandHandler.Create<string, string, bool, bool, bool, string>(HandleCommandAsync);
             return rootCommand.InvokeAsync(args);
         }
 
-        static async Task<int> HandleCommandAsync(string assembliesPath, bool verbose, bool quiet, bool openDiff, string? debugPath)
+        static async Task<int> HandleCommandAsync(string assembliesPath, string sourcePath, bool verbose, bool quiet, bool openDiff, string? debugPath)
         {
-            var options = new Options(assembliesPath, verbose, quiet, openDiff, debugPath);
+            var options = new Options(assembliesPath, sourcePath, verbose, quiet, openDiff, debugPath);
 
             var loggerFactory = new LoggerFactory(
                 new[] { new ConsoleLoggerProvider(new ConsoleLoggerSettings()) },
@@ -81,7 +84,7 @@ namespace BuildValidator
             try
             {
                 var logger = loggerFactory.CreateLogger<Program>();
-                var sourceResolver = new LocalSourceResolver(loggerFactory);
+                var sourceResolver = new LocalSourceResolver(options, loggerFactory);
                 var referenceResolver = new LocalReferenceResolver(options, loggerFactory);
 
                 var buildConstructor = new BuildConstructor(referenceResolver, sourceResolver, logger);
@@ -224,12 +227,12 @@ namespace BuildValidator
                     return null;
                 }
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                logger.LogError(e, originalBinary.FullName);
-                return CompilationDiff.Create(originalBinary, e);
-            }
+            // catch (Exception e)
+            // {
+            //     Console.WriteLine(e.Message);
+            //     logger.LogError(e, originalBinary.FullName);
+            //     return CompilationDiff.Create(originalBinary, e);
+            // }
             finally
             {
                 pdbReaderProvider?.Dispose();
