@@ -67,6 +67,7 @@ namespace Roslyn.Test.Utilities.PDB
             pdbOptions.VerifyPdbOption(
                 "optimization",
                 (compilationOptions.OptimizationLevel, compilationOptions.DebugPlusMode),
+                isDefault: _ => false,
                 toString: v => v.OptimizationLevel.ToPdbSerializedString(v.DebugPlusMode));
 
             Assert.Equal(compilation.Language, pdbOptions["language"]);
