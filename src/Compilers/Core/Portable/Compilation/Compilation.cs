@@ -438,7 +438,6 @@ namespace Microsoft.CodeAnalysis
         /// Gets the syntax trees (parsed from source code) that this compilation was created with.
         /// </summary>
         public IEnumerable<SyntaxTree> SyntaxTrees { get { return CommonSyntaxTrees; } }
-
         protected abstract IEnumerable<SyntaxTree> CommonSyntaxTrees { get; }
 
         /// <summary>
@@ -2569,8 +2568,6 @@ namespace Microsoft.CodeAnalysis
                 testData: null,
                 cancellationToken: cancellationToken);
         }
-
-        internal void CheckMeOut() { }
 
         /// <summary>
         /// This overload is only intended to be directly called by tests that want to pass <paramref name="testData"/>.

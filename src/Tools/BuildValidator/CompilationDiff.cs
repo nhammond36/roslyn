@@ -118,7 +118,6 @@ namespace BuildValidator
                         }
                         Console.WriteLine($@"Writing diffs to ""{debugPath}""");
 
-
                         var assemblyName = Path.GetFileNameWithoutExtension(originalBinaryPath.Name);
                         var assemblyDebugPath = Path.Combine(debugPath, assemblyName);
 
