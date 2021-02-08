@@ -66,8 +66,6 @@ namespace BuildValidator
                 manifestContents: null,
                 iconInIcoFormat: null);
 
-            // TODO: clean up usages of options reader.
-            // TODO: probably extract these emit bits into "BuildConstructor".
             var sourceLink = optionsReader.GetSourceLinkUTF8();
             var emitResult = producedCompilation.Emit(
                 peStream: rebuildPeStream,

@@ -62,23 +62,9 @@ namespace BuildValidator
             throw new InvalidDataException("Did not find language in compilation options");
         }
 
-        // TODO: log metadata references after resolving, including the resolved path
         private ImmutableArray<MetadataReferenceInfo> GetMetadataReferenceInfos(CompilationOptionsReader compilationOptionsReader)
         {
-            using var _ = _logger.BeginScope("Metadata References");
             var referenceInfos = compilationOptionsReader.GetMetadataReferences();
-            var count = 0;
-            foreach (var refInfo in referenceInfos)
-            {
-                count++;
-                if (count >= 10)
-                {
-                    _logger.LogInformation($"... {referenceInfos.Length - count} more");
-                    break;
-                }
-                _logger.LogInformation($"{refInfo.Name} - {refInfo.Mvid}");
-            }
-
             return referenceInfos;
         }
 
@@ -86,6 +72,21 @@ namespace BuildValidator
         {
             return compilationOptionsReader.GetSourceFileInfos(encoding);
         }
+
+        private void LogResolvedMetadataReferences(ImmutableArray<MetadataReferenceInfo> infos, ImmutableArray<MetadataReference> references)
+        {
+            using var _ = _logger.BeginScope("Metadata References");
+            if (infos.Length != references.Length)
+            {
+                throw new Exception($"{nameof(infos)} has length {infos.Length} but {nameof(references)} has length {references.Length}.");
+            }
+
+            for (var i = 0; i < infos.Length; i++)
+            {
+                _logger.LogInformation($@"""{references[i].Display}"" - {infos[i].Mvid}");
+            }
+        }
+
 
         private void LogResolvedSources(ImmutableArray<ResolvedSource> resolvedSources)
         {
@@ -147,7 +148,8 @@ namespace BuildValidator
             var (compilationOptions, parseOptions, encoding) = CreateCSharpCompilationOptions(compilationOptionsReader, assemblyName);
             var sourceFileInfos = GetSourceFileInfos(compilationOptionsReader, encoding);
 
-            var metadataReferences = ResolveMetadataReferences(metadataReferenceInfos); // TODO: improve perf
+            var metadataReferences = ResolveMetadataReferences(metadataReferenceInfos);
+            LogResolvedMetadataReferences(metadataReferenceInfos, metadataReferences);
             var sourceLinks = compilationOptionsReader.GetSourceLinksOpt();
             var sources = await ResolveSourcesAsync(sourceFileInfos, sourceLinks, encoding).ConfigureAwait(false);
             LogResolvedSources(sources);
