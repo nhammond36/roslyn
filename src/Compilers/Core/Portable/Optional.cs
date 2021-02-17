@@ -12,7 +12,7 @@ namespace Microsoft.CodeAnalysis
     /// </summary>
     /// <typeparam name="T">The type of the value.</typeparam>
     public readonly struct Optional<T>
-    {
+    {asdf
         private readonly bool _hasValue;
         private readonly T _value;
 
