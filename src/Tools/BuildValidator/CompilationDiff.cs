@@ -57,12 +57,9 @@ namespace BuildValidator
         {
             using var rebuildPeStream = new MemoryStream();
 
-            // By default the Roslyn command line adds a resource that we need to replicate here.
-            using var win32ResourceStream = producedCompilation.CreateDefaultWin32Resources(
-                versionResource: true,
-                noManifest: producedCompilation.Options.OutputKind == OutputKind.DynamicallyLinkedLibrary,
-                manifestContents: null,
-                iconInIcoFormat: null);
+            var peHeader = optionsReader.PeReader.PEHeaders.PEHeader!;
+            var win32Resources = optionsReader.PeReader.GetSectionData(peHeader.ResourceTableDirectory.RelativeVirtualAddress);
+            using var win32ResourceStream = new UnmanagedMemoryStream(win32Resources.Pointer, win32Resources.Length);
 
             var sourceLink = optionsReader.GetSourceLinkUTF8();
 
@@ -77,6 +74,7 @@ namespace BuildValidator
                 pdbStream: null,
                 xmlDocumentationStream: null,
                 win32Resources: win32ResourceStream,
+                useRawWin32Resources: true,
                 manifestResources: optionsReader.GetManifestResources(),
                 options: new EmitOptions(
                     debugInformationFormat: DebugInformationFormat.Embedded, highEntropyVirtualAddressSpace: true),
