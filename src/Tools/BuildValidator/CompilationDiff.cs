@@ -77,7 +77,9 @@ namespace BuildValidator
                 useRawWin32Resources: true,
                 manifestResources: optionsReader.GetManifestResources(),
                 options: new EmitOptions(
-                    debugInformationFormat: DebugInformationFormat.Embedded, highEntropyVirtualAddressSpace: true),
+                    debugInformationFormat: DebugInformationFormat.Embedded,
+                    highEntropyVirtualAddressSpace: (peHeader.DllCharacteristics & DllCharacteristics.HighEntropyVirtualAddressSpace) != 0,
+                    subsystemVersion: SubsystemVersion.Create(peHeader.MajorSubsystemVersion, peHeader.MinorSubsystemVersion)),
                 debugEntryPoint: debugEntryPoint,
                 metadataPEStream: null,
                 pdbOptionsBlobReader: optionsReader.GetMetadataCompilationOptionsBlobReader(),
