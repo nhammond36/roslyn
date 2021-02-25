@@ -17,6 +17,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.VisualBasic;
 using Microsoft.Extensions.Logging;
+using Roslyn.Utilities;
 using CS = Microsoft.CodeAnalysis.CSharp;
 using VB = Microsoft.CodeAnalysis.VisualBasic;
 
@@ -193,7 +194,7 @@ namespace BuildValidator
                 cryptoKeyFile: null,
                 cryptoPublicKey: optionsReader.GetPublicKey()?.ToImmutableArray() ?? default,
                 delaySign: null,
-                Platform.AnyCpu,
+                platform: GetPlatform(optionsReader.PeReader.PEHeaders.CoffHeader),
 
                 // presence of diagnostics is expected to not affect emit.
                 ReportDiagnostic.Suppress,
@@ -216,6 +217,37 @@ namespace BuildValidator
             compilationOptions.DebugPlusMode = plus;
 
             return (compilationOptions, parseOptions);
+        }
+
+        private static Platform GetPlatform(CoffHeader coffHeader)
+        {
+            var machine = coffHeader.Machine;
+            var characteristics = coffHeader.Characteristics;
+            switch (machine)
+            {
+                case Machine.Arm64:
+                    return Platform.Arm64;
+
+                case Machine.ArmThumb2:
+                    return Platform.Arm;
+
+                case Machine.Amd64:
+                    return Platform.X64;
+
+                case Machine.IA64:
+                    return Platform.Itanium;
+
+                case Machine.I386:
+                    return (characteristics & Characteristics.LargeAddressAware) != 0 ? Platform.AnyCpu : Platform.X86;
+
+                case Machine.Unknown:
+                    return (characteristics & Characteristics.Bit32Machine) != 0
+                        ? Platform.AnyCpu32BitPreferred
+                        : Platform.AnyCpu;
+
+                default:
+                    throw ExceptionUtilities.UnexpectedValue(machine);
+            }
         }
 
         private static (OptimizationLevel, bool) GetOptimizationLevel(string? optimizationLevel)
