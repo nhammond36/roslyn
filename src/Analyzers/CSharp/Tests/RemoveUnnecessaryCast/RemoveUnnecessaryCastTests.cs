@@ -1837,7 +1837,7 @@ class Other
         Solution,
         Other
     }
-}", 
+}",
 @"
 class Other
 {
