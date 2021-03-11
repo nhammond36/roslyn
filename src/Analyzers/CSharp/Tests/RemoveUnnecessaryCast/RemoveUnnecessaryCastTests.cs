@@ -1842,13 +1842,13 @@ class Other
 class Other
 {
     public short GetScopeIdForTelemetry(FixAllScope scope)
-        => (scope switch
+        => scope switch
         {
             FixAllScope.Document => 1,
             FixAllScope.Project => 2,
             FixAllScope.Solution => 3,
             _ => 4,
-        });
+        };
 
     public enum FixAllScope
     {

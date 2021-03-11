@@ -796,7 +796,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                     // This can happen when we're inferring the return type of a lambda, or when there are no arms (an error case).
                     // For this case, we don't need to do any work, as the unconverted switch expression can't contribute info, and
                     // there is nothing that is being publicly exposed to the semantic model.
-                    Debug.Assert((node is BoundUnconvertedSwitchExpression &&_returnTypesOpt is not null)
+                    Debug.Assert((node is BoundUnconvertedSwitchExpression && _returnTypesOpt is not null)
                                  || node is BoundSwitchExpression { SwitchArms: { Length: 0 } });
                     inferredState = default;
                 }
