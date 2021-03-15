@@ -4343,7 +4343,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
             TypeSymbol? resultType;
-            if (node.HasErrors || node is BoundConditionalOperator { WasTargetTyped: true })
+            bool wasTargetTyped = node is BoundConditionalOperator { WasTargetTyped: true };
+            if (node.HasErrors || wasTargetTyped)
             {
                 resultType = null;
             }
@@ -4363,18 +4364,16 @@ namespace Microsoft.CodeAnalysis.CSharp
                 resultType = BestTypeInferrer.InferBestTypeForConditionalOperator(consequencePlaceholder, alternativePlaceholder, _conversions, out _, ref discardedUseSiteInfo);
             }
 
-            if (resultType is null)
-            {
-                resultType = node.Type?.SetUnknownNullabilityForReferenceTypes();
-            }
+
+            resultType ??= node.Type?.SetUnknownNullabilityForReferenceTypes();
 
             NullableFlowState resultState;
-            if (node is not BoundConditionalOperator { WasTargetTyped: true })
+            if (!wasTargetTyped)
             {
                 if (resultType is null)
                 {
                     // This can happen when we're inferring the return type of a lambda. For this case, we don't need to do any work,
-                    // the unconverted conditional operator can't contribute info, because the conversion that should be on top of this
+                    // the unconverted conditional operator can't contribute info. The conversion that should be on top of this
                     // can add or remove nullability, and nested nodes aren't being publicly exposed by the semantic model.
                     Debug.Assert(node is BoundUnconvertedConditionalOperator);
                     Debug.Assert(_returnTypesOpt is not null);
@@ -7019,41 +7018,45 @@ namespace Microsoft.CodeAnalysis.CSharp
                 switch (conversionOperand)
                 {
                     case BoundConditionalOperator { WasTargetTyped: true } conditional:
-                        Debug.Assert(_conditionalInfoForConversionOpt is not null && _conditionalInfoForConversionOpt.ContainsKey(conditional));
-                        var info = _conditionalInfoForConversionOpt[conditional];
-                        Debug.Assert(info.Length == 2);
-
-                        var consequence = conditional.Consequence;
-                        (BoundExpression consequenceOperand, Conversion consequenceConversion) = RemoveConversion(consequence, includeExplicitConversions: false);
-                        var consequenceRValue = ConvertConditionalOperandOrSwitchExpressionArmResult(consequence, consequenceOperand, consequenceConversion, targetTypeWithNullability, info[0].ResultType, info[0].State, info[0].EndReachable);
-                        var alternative = conditional.Alternative;
-                        (BoundExpression alternativeOperand, Conversion alternativeConversion) = RemoveConversion(alternative, includeExplicitConversions: false);
-                        var alternativeRValue = ConvertConditionalOperandOrSwitchExpressionArmResult(alternative, alternativeOperand, alternativeConversion, targetTypeWithNullability, info[1].ResultType, info[1].State, info[1].EndReachable);
-
-                        _conditionalInfoForConversionOpt.Remove(conditional);
-
-                        return consequenceRValue.State.Join(alternativeRValue.State);
-
-                    case BoundConvertedSwitchExpression { WasTargetTyped: true } @switch:
-                        Debug.Assert(_conditionalInfoForConversionOpt is not null && _conditionalInfoForConversionOpt.ContainsKey(@switch));
-                        info = _conditionalInfoForConversionOpt[@switch];
-
-                        Debug.Assert(info.Length == @switch.SwitchArms.Length);
-
-                        var resultTypes = ArrayBuilder<TypeWithState>.GetInstance(info.Length);
-
-                        for (int i = 0; i < info.Length; i++)
                         {
-                            var (state, armResultType, isReachable) = info[i];
-                            var arm = @switch.SwitchArms[i].Value;
-                            var (operand, conversion) = RemoveConversion(arm, includeExplicitConversions: false);
-                            resultTypes.Add(ConvertConditionalOperandOrSwitchExpressionArmResult(arm, operand, conversion, targetTypeWithNullability, armResultType, state, isReachable));
+                            Debug.Assert(_conditionalInfoForConversionOpt is not null && _conditionalInfoForConversionOpt.ContainsKey(conditional));
+                            var info = _conditionalInfoForConversionOpt[conditional];
+                            Debug.Assert(info.Length == 2);
+
+                            var consequence = conditional.Consequence;
+                            (BoundExpression consequenceOperand, Conversion consequenceConversion) = RemoveConversion(consequence, includeExplicitConversions: false);
+                            var consequenceRValue = ConvertConditionalOperandOrSwitchExpressionArmResult(consequence, consequenceOperand, consequenceConversion, targetTypeWithNullability, info[0].ResultType, info[0].State, info[0].EndReachable);
+                            var alternative = conditional.Alternative;
+                            (BoundExpression alternativeOperand, Conversion alternativeConversion) = RemoveConversion(alternative, includeExplicitConversions: false);
+                            var alternativeRValue = ConvertConditionalOperandOrSwitchExpressionArmResult(alternative, alternativeOperand, alternativeConversion, targetTypeWithNullability, info[1].ResultType, info[1].State, info[1].EndReachable);
+
+                            _conditionalInfoForConversionOpt.Remove(conditional);
+
+                            return consequenceRValue.State.Join(alternativeRValue.State);
                         }
 
-                        var resultState = BestTypeInferrer.GetNullableState(resultTypes);
-                        resultTypes.Free();
-                        _conditionalInfoForConversionOpt.Remove(@switch);
-                        return resultState;
+                    case BoundConvertedSwitchExpression { WasTargetTyped: true } @switch:
+                        {
+                            Debug.Assert(_conditionalInfoForConversionOpt is not null && _conditionalInfoForConversionOpt.ContainsKey(@switch));
+                            var info = _conditionalInfoForConversionOpt[@switch];
+
+                            Debug.Assert(info.Length == @switch.SwitchArms.Length);
+
+                            var resultTypes = ArrayBuilder<TypeWithState>.GetInstance(info.Length);
+
+                            for (int i = 0; i < info.Length; i++)
+                            {
+                                var (state, armResultType, isReachable) = info[i];
+                                var arm = @switch.SwitchArms[i].Value;
+                                var (operand, conversion) = RemoveConversion(arm, includeExplicitConversions: false);
+                                resultTypes.Add(ConvertConditionalOperandOrSwitchExpressionArmResult(arm, operand, conversion, targetTypeWithNullability, armResultType, state, isReachable));
+                            }
+
+                            var resultState = BestTypeInferrer.GetNullableState(resultTypes);
+                            resultTypes.Free();
+                            _conditionalInfoForConversionOpt.Remove(@switch);
+                            return resultState;
+                        }
 
                     case BoundObjectCreationExpression { WasTargetTyped: true }:
                     case BoundUnconvertedObjectCreationExpression:
