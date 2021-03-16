@@ -18,6 +18,7 @@ using Microsoft.Cci;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
+using Roslyn.Utilities;
 
 namespace BuildValidator
 {
@@ -43,9 +44,12 @@ namespace BuildValidator
         public PEReader PeReader { get; }
         private readonly ILogger _logger;
 
+        public bool HasMetadataCompilationOptions => TryGetMetadataCompilationOptions(out _);
+
         private MetadataCompilationOptions? _metadataCompilationOptions;
         private ImmutableArray<MetadataReferenceInfo> _metadataReferenceInfo;
         private byte[]? _sourceLinkUTF8;
+
 
         public CompilationOptionsReader(ILogger logger, MetadataReader pdbReader, PEReader peReader)
         {
@@ -95,8 +99,8 @@ namespace BuildValidator
             using var scope = _logger.BeginScope("Encoding");
 
             var optionsReader = GetMetadataCompilationOptions();
-            optionsReader.TryGetUniqueOption(_logger, "default-encoding", out var defaultEncoding);
-            optionsReader.TryGetUniqueOption(_logger, "fallback-encoding", out var fallbackEncoding);
+            optionsReader.TryGetUniqueOption(_logger, CompilationOptionNames.DefaultEncoding, out var defaultEncoding);
+            optionsReader.TryGetUniqueOption(_logger, CompilationOptionNames.FallbackEncoding, out var fallbackEncoding);
 
             var encodingString = defaultEncoding ?? fallbackEncoding;
             var encoding = encodingString is null
