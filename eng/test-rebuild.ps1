@@ -38,7 +38,7 @@ try {
 
   $dotnetInstallDir = (InitializeDotNetCli -install:$true)
   $rebuildArgs = ("--verbose" +
-  " --assembliesPath `"$ArtifactsDir/obj/`"" +
+  " --assembliesPath `"$ArtifactsDir/obj/Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests/$configuration/net5.0/`"" +
 
   # Configuration Issues
   " --exclude netcoreapp3.1\Microsoft.CodeAnalysis.Collections.Package.dll" +
@@ -75,7 +75,7 @@ try {
   " --exclude net472\Microsoft.CodeAnalysis.CSharp.Scripting.UnitTests.dll" +
   " --exclude netcoreapp3.1\Microsoft.CodeAnalysis.CSharp.Scripting.UnitTests.dll" +
   " --exclude net472\Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.dll" +
-  " --exclude net5.0\Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.dll" +
+  # " --exclude net5.0\Microsoft.CodeAnalysis.CSharp.Semantic.UnitTests.dll" +
   " --exclude net472\Microsoft.CodeAnalysis.CSharp.Symbol.UnitTests.dll" +
   " --exclude net5.0\Microsoft.CodeAnalysis.CSharp.Symbol.UnitTests.dll" +
   " --exclude net472\Microsoft.CodeAnalysis.CSharp.Syntax.UnitTests.dll" +

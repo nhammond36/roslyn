@@ -162,5 +162,18 @@ End Class",
 
             VerifyRoundTrip(original);
         }
+
+        // [Theory]
+        // [MemberData(nameof(Platforms))]
+        // public void NativeResources_RoundTrip(Platform platform)
+        // {
+        //     var res = 
+        //     var original = CreateCompilation(
+        //         "class C { static void Main() { } }",
+        //         options: BaseCSharpCompilationOptions.WithPlatform(platform),
+        //         sourceFileName: "test.cs");
+
+        //     VerifyRoundTrip(original);
+        // }
     }
 }
