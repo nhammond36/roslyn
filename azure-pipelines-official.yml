@@ -130,6 +130,14 @@ stages:
         ${{ if eq(variables['System.TeamProject'], 'internal') }}:
           nuGetServiceConnections: azure-public/vs-impl, azure-public/vssdk, devdiv/engineering
 
+    # Ensure we have the right .net sdk to restore internal tools.
+    - task: UseDotNet@2
+      displayName: Get .Net SDK for internal tools
+      inputs:
+        packageType: sdk
+        useGlobalJson: true
+        installationPath: $(Agent.TempDirectory) 
+
     - task: NuGetCommand@2
       displayName: Restore internal tools
       inputs:
