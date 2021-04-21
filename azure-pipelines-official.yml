@@ -130,6 +130,15 @@ stages:
         ${{ if eq(variables['System.TeamProject'], 'internal') }}:
           nuGetServiceConnections: azure-public/vs-impl, azure-public/vssdk, devdiv/engineering
 
+    - task: NuGetCommand@2
+      displayName: Restore internal tools
+      inputs:
+        command: restore
+        feedsToUse: config
+        restoreSolution: 'eng\common\internal\Tools.csproj'
+        nugetConfigPath: 'NuGet.config'
+        restoreDirectory: '$(Build.SourcesDirectory)\.packages'
+
     - task: MicroBuildSigningPlugin@2
       inputs:
         signType: $(SignType)
