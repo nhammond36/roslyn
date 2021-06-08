@@ -82,8 +82,8 @@ namespace Microsoft.CodeAnalysis
         /// <summary>
         /// States ordered by <see cref="DocumentId"/>.
         /// </summary>
-        public IEnumerable<TState> States
-            => _map.Values;
+        public ImmutableSortedDictionary<DocumentId, TState> States
+            => _map;
 
         /// <summary>
         /// Get states ordered in compilation order.
