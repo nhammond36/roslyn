@@ -30,6 +30,7 @@ variables:
   - group: DotNet-DevDiv-Insertion-Workflow-Variables
   - name: _DevDivDropAccessToken
     value: $(dn-bot-devdiv-drop-rw-code-rw)
+  - group: ManagedLanguageSecrets
 
 stages:
 
@@ -263,6 +264,58 @@ stages:
         - OfficialBuild
       pool:
         vmImage: vs2017-win2016
+
+- stage: insert
+  displayName: Insert to VS
+
+  jobs:
+  - job: insert
+    displayName: Insert to VS
+    vmImage: windows-2019
+    steps:
+    - checkout: none
+    - task: NuGetCommand@2
+      displayName: 'Install RIT from Azure Artifacts'
+      inputs:
+        command: custom
+        arguments: 'install RoslynTools.VisualStudioInsertionTool -PreRelease -Source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json'
+
+    #Your build pipeline references the ‘BuildQueueName’ variable, which you’ve selected to be settable at queue time. Create or edit the build pipeline for this YAML file, define the variable on the Variables tab, and then select the option to make it settable at queue time. See https://go.microsoft.com/fwlink/?linkid=865971
+    # TODO: read vs branch name from PublishData.json
+    # do we have to do a full checkout if we do that?
+    - powershell: |
+        mv RoslynTools.VisualStudioInsertionTool.* RIT
+          .\RIT\tools\OneOffInsertion.ps1 `
+            -autoComplete "false" `
+            -buildQueueName "$(Build.DefinitionName)" `
+            -cherryPick "(default)" `
+            -clientId "$(ClientId)" `
+            -clientSecret "$(ClientSecret)" `
+            -componentAzdoUri "$(System.CollectionUri)" `
+            -componentBranchName "$(Build.SourceBranch)" `
+            -componentGitHubRepoName "dotnet/roslyn" `
+            -componentName "Roslyn" `
+            -componentProjectName "internal" `
+            -createDraftPR "false" `
+            -defaultValueSentinel "(default)" `
+            -dropPath "VSSetup" `
+            -insertCore "(default)" `
+            -insertDevDiv "(default)" `
+            -insertionCount "1" `
+            -insertToolset "true" `
+            -titlePrefix "[Auto Insertion]" `
+            -queueValidation "true" `
+            -requiredValueSentinel "REQUIRED" `
+            -reviewerGUID "6c25b447-1d90-4840-8fde-d8b22cb8733e"
+            -specificBuild "(default)" `
+            -updateAssemblyVersions "(default)" `
+            -updateCoreXTLibraries "(default)" `
+            -visualStudioBranchName "main" `
+            -writePullRequest "prid.txt" `
+      displayName: 'Run OneOffInsertion.ps1'
+
+    - script: 'echo. && echo. && type "prid.txt" && echo. && echo.'
+      displayName: 'Report PR URL'
 
 - ${{ if and(ne(variables['System.TeamProject'], 'public'), notin(variables['Build.Reason'], 'PullRequest')) }}:
   - template: eng\common\templates\post-build\post-build.yml
