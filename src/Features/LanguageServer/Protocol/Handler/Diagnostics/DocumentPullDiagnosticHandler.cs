@@ -15,16 +15,13 @@ namespace Microsoft.CodeAnalysis.LanguageServer.Handler.Diagnostics
 {
     internal class DocumentPullDiagnosticHandler : AbstractPullDiagnosticHandler<VSInternalDocumentDiagnosticsParams, VSInternalDiagnosticReport, VSInternalDiagnosticReport[]>
     {
-        private readonly IDiagnosticAnalyzerService _analyzerService;
-
         public override string Method => VSInternalMethods.DocumentPullDiagnosticName;
 
         public DocumentPullDiagnosticHandler(
             IDiagnosticService diagnosticService,
             IDiagnosticAnalyzerService analyzerService)
-            : base(diagnosticService)
+            : base(diagnosticService, analyzerService)
         {
-            _analyzerService = analyzerService;
         }
 
         public override TextDocumentIdentifier? GetTextDocumentIdentifier(VSInternalDocumentDiagnosticsParams diagnosticsParams)
