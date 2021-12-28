@@ -52,13 +52,13 @@ End Class");
 
         public virtual void MetadataReference()
         {
-            var numerics = new ProjectUtils.AssemblyReference("System.Numerics.Vectors");
+            var systemDataLinq = new ProjectUtils.AssemblyReference("System.Data.Linq");
             var project = new ProjectUtils.Project(ProjectName);
-            VisualStudio.SolutionExplorer.AddMetadataReference(numerics, project);
-            VisualStudio.Editor.SetText("class C { System.Numerics.Vector2 p; }");
-            VisualStudio.Editor.PlaceCaret("Vector2");
+            VisualStudio.SolutionExplorer.AddMetadataReference(systemDataLinq, project);
+            VisualStudio.Editor.SetText("class C { System.Data.Linq.ModifiedMemberInfo p; }");
+            VisualStudio.Editor.PlaceCaret("ModifiedMemberInfo");
             VisualStudio.Editor.Verify.CurrentTokenType("struct name");
-            VisualStudio.SolutionExplorer.RemoveMetadataReference(numerics, project);
+            VisualStudio.SolutionExplorer.RemoveMetadataReference(systemDataLinq, project);
             VisualStudio.Editor.Verify.CurrentTokenType("identifier");
         }
 
