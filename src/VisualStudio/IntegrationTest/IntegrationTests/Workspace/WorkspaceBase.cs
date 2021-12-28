@@ -52,13 +52,13 @@ End Class");
 
         public virtual void MetadataReference()
         {
-            var windowsBase = new ProjectUtils.AssemblyReference("WindowsBase");
+            var numerics = new ProjectUtils.AssemblyReference("System.IO.Log");
             var project = new ProjectUtils.Project(ProjectName);
-            VisualStudio.SolutionExplorer.AddMetadataReference(windowsBase, project);
-            VisualStudio.Editor.SetText("class C { System.Windows.Point p; }");
-            VisualStudio.Editor.PlaceCaret("Point");
+            VisualStudio.SolutionExplorer.AddMetadataReference(numerics, project);
+            VisualStudio.Editor.SetText("class C { System.IO.Log.PolicyUnit p; }");
+            VisualStudio.Editor.PlaceCaret("PolicyUnit");
             VisualStudio.Editor.Verify.CurrentTokenType("struct name");
-            VisualStudio.SolutionExplorer.RemoveMetadataReference(windowsBase, project);
+            VisualStudio.SolutionExplorer.RemoveMetadataReference(numerics, project);
             VisualStudio.Editor.Verify.CurrentTokenType("identifier");
         }
 

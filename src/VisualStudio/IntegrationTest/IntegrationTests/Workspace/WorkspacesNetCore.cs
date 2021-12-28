@@ -31,7 +31,8 @@ namespace Roslyn.VisualStudio.IntegrationTests.Workspace
             base.OpenCSharpThenVBSolution();
         }
 
-        [WpfFact(Skip = "https://github.com/dotnet/roslyn/issues/55711"), Trait(Traits.Feature, Traits.Features.Workspace)]
+        //[WpfFact(Skip = "https://github.com/dotnet/roslyn/issues/55711"), Trait(Traits.Feature, Traits.Features.Workspace)]
+        [WpfFact, Trait(Traits.Feature, Traits.Features.Workspace)]
         [Trait(Traits.Feature, Traits.Features.NetCore)]
         [WorkItem(34264, "https://github.com/dotnet/roslyn/issues/34264")]
         public override void MetadataReference()
