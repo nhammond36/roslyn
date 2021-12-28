@@ -52,11 +52,11 @@ End Class");
 
         public virtual void MetadataReference()
         {
-            var numerics = new ProjectUtils.AssemblyReference("System.IO.Log");
+            var numerics = new ProjectUtils.AssemblyReference("System.Numerics.Vectors");
             var project = new ProjectUtils.Project(ProjectName);
             VisualStudio.SolutionExplorer.AddMetadataReference(numerics, project);
-            VisualStudio.Editor.SetText("class C { System.IO.Log.PolicyUnit p; }");
-            VisualStudio.Editor.PlaceCaret("PolicyUnit");
+            VisualStudio.Editor.SetText("class C { System.Numerics.Vector2 p; }");
+            VisualStudio.Editor.PlaceCaret("Vector2");
             VisualStudio.Editor.Verify.CurrentTokenType("struct name");
             VisualStudio.SolutionExplorer.RemoveMetadataReference(numerics, project);
             VisualStudio.Editor.Verify.CurrentTokenType("identifier");
