@@ -40,7 +40,7 @@ namespace Roslyn.VisualStudio.IntegrationTests.Workspace
             VisualStudio.SolutionExplorer.EditProjectFile(project);
             VisualStudio.Editor.SetText(@"<Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net462</TargetFramework>
   </PropertyGroup>
 </Project>");
             VisualStudio.SolutionExplorer.SaveAll();
