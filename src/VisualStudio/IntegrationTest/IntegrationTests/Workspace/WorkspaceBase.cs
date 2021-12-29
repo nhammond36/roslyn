@@ -52,11 +52,11 @@ End Class");
 
         public virtual void MetadataReference()
         {
-            var systemDataLinq = new ProjectUtils.AssemblyReference("System.Data.Linq");
+            var systemDataLinq = new ProjectUtils.AssemblyReference("System.Windows.Forms");
             var project = new ProjectUtils.Project(ProjectName);
             VisualStudio.SolutionExplorer.AddMetadataReference(systemDataLinq, project);
-            VisualStudio.Editor.SetText("class C { System.Data.Linq.ModifiedMemberInfo p; }");
-            VisualStudio.Editor.PlaceCaret("ModifiedMemberInfo");
+            VisualStudio.Editor.SetText("class C { System.Windows.Forms.Message m; }");
+            VisualStudio.Editor.PlaceCaret("Message");
             VisualStudio.Editor.Verify.CurrentTokenType("struct name");
             VisualStudio.SolutionExplorer.RemoveMetadataReference(systemDataLinq, project);
             VisualStudio.Editor.Verify.CurrentTokenType("identifier");
