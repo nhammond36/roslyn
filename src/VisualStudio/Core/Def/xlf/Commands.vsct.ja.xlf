@@ -529,7 +529,7 @@
       </trans-unit>
       <trans-unit id="cmdidshowValueTracking|ButtonText">
         <source>Track Value Source</source>
-        <target state="translated">値のソースの追跡</target>
+        <target state="translated">トラック値のソース</target>
         <note />
       </trans-unit>
       <trans-unit id="cmdidshowValueTracking|CommandName">
