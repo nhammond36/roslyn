@@ -94,7 +94,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
                 .Select(info => TestInheritanceTargetItem.Create(info, testWorkspace))
                 .OrderBy(target => target.TargetSymbolName)
                 .ToImmutableArray();
-            var sortedActualTargets = actualItem.TargetItems.OrderBy(target => target.DisplayName)
+            var sortedActualTargets = actualItem.TargetItems.OrderBy(target => target.DefinitionItem.DisplayParts.JoinText())
                 .ToImmutableArray();
             for (var i = 0; i < expectedTargets.Length; i++)
             {
@@ -104,7 +104,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
 
         private static async Task VerifyInheritanceTargetAsync(TestInheritanceTargetItem expectedTarget, InheritanceTargetItem actualTarget)
         {
-            Assert.Equal(expectedTarget.TargetSymbolName, actualTarget.DisplayName);
+            Assert.Equal(expectedTarget.TargetSymbolName, actualTarget.DefinitionItem.DisplayParts.JoinText());
             Assert.Equal(expectedTarget.RelationshipToMember, actualTarget.RelationToMember);
 
             if (expectedTarget.IsInMetadata)
@@ -122,15 +122,6 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
                     var docSpan = await actualDocumentSpans[i].TryRehydrateAsync(CancellationToken.None);
                     Assert.Equal(expectedDocumentSpans[i].SourceSpan, docSpan.Value.SourceSpan);
                     Assert.Equal(expectedDocumentSpans[i].Document.FilePath, docSpan.Value.Document.FilePath);
-                }
-
-                if (actualDocumentSpans.Length == 1)
-                {
-                    Assert.Empty(actualTarget.DefinitionItem.Tags);
-                    Assert.Empty(actualTarget.DefinitionItem.Properties);
-                    Assert.Empty(actualTarget.DefinitionItem.DisplayableProperties);
-                    Assert.Empty(actualTarget.DefinitionItem.NameDisplayParts);
-                    Assert.Empty(actualTarget.DefinitionItem.DisplayParts);
                 }
             }
         }
@@ -193,7 +184,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
         private class TargetInfo
         {
             public readonly string TargetSymbolDisplayName;
-            public readonly ImmutableArray<string> LocationTags;
+            public readonly string? LocationTag;
             public readonly InheritanceRelationship Relationship;
             public readonly bool InMetadata;
 
@@ -203,7 +194,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
                 InheritanceRelationship relationship)
             {
                 TargetSymbolDisplayName = targetSymbolDisplayName;
-                LocationTags = ImmutableArray.Create(locationTag);
+                LocationTag = locationTag;
                 Relationship = relationship;
                 InMetadata = false;
             }
@@ -216,17 +207,7 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
                 TargetSymbolDisplayName = targetSymbolDisplayName;
                 Relationship = relationship;
                 InMetadata = inMetadata;
-                LocationTags = ImmutableArray<string>.Empty;
-            }
-
-            public TargetInfo(
-                string targetSymbolDisplayName,
-                InheritanceRelationship relationship,
-                params string[] locationTags)
-            {
-                TargetSymbolDisplayName = targetSymbolDisplayName;
-                LocationTags = locationTags.ToImmutableArray();
-                Relationship = relationship;
+                LocationTag = null;
             }
         }
 
@@ -265,20 +246,16 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.InheritanceMargin
                 {
                     using var _ = ArrayBuilder<DocumentSpan>.GetInstance(out var builder);
                     // If the target is not in metadata, there must be a location tag to give the span!
-                    Assert.True(targetInfo.LocationTags != null);
+                    Assert.True(targetInfo.LocationTag != null);
                     foreach (var testHostDocument in testWorkspace.Documents)
                     {
-                        if (targetInfo.LocationTags != null)
+                        if (targetInfo.LocationTag != null)
                         {
                             var annotatedSpans = testHostDocument.AnnotatedSpans;
-
-                            foreach (var tag in targetInfo.LocationTags)
+                            if (annotatedSpans.TryGetValue(targetInfo.LocationTag, out var spans))
                             {
-                                if (annotatedSpans.TryGetValue(tag, out var spans))
-                                {
-                                    var document = testWorkspace.CurrentSolution.GetRequiredDocument(testHostDocument.Id);
-                                    builder.AddRange(spans.Select(span => new DocumentSpan(document, span)));
-                                }
+                                var document = testWorkspace.CurrentSolution.GetRequiredDocument(testHostDocument.Id);
+                                builder.AddRange(spans.Select(span => new DocumentSpan(document, span)));
                             }
                         }
                     }
@@ -319,7 +296,7 @@ public class Bar : IEnumerable
                 lineNumber: 3,
                 memberName: "class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IEnumerable",
+                        targetSymbolDisplayName: "interface IEnumerable",
                         relationship: InheritanceRelationship.ImplementedInterface,
                         inMetadata: true)));
 
@@ -327,7 +304,7 @@ public class Bar : IEnumerable
                 lineNumber: 5,
                 memberName: "IEnumerator Bar.GetEnumerator()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IEnumerable.GetEnumerator",
+                        targetSymbolDisplayName: "IEnumerator IEnumerable.GetEnumerator()",
                         relationship: InheritanceRelationship.ImplementedMember,
                         inMetadata: true)));
 
@@ -348,7 +325,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
+                        targetSymbolDisplayName: "class Bar",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -356,7 +333,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 3,
                 memberName: "class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -379,7 +356,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar2",
+                        targetSymbolDisplayName: "interface IBar2",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingType))
                 );
@@ -388,7 +365,7 @@ public class {|target2:Bar|} : IBar
                 memberName: "interface IBar2",
                 targets: ImmutableArray<TargetInfo>.Empty
                     .Add(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.InheritedInterface))
                 );
@@ -412,7 +389,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "class A",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "B",
+                        targetSymbolDisplayName: "class B",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.DerivedType))
             );
@@ -420,7 +397,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 3,
                 memberName: "class B",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "A",
+                        targetSymbolDisplayName: "class A",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.BaseType))
             );
@@ -468,7 +445,7 @@ public class {|target2:Bar|} : IBar
                     memberName: "class Bar",
                     targets: ImmutableArray.Create(
                         new TargetInfo(
-                            targetSymbolDisplayName: "Bar1",
+                            targetSymbolDisplayName: "class Bar1",
                             locationTag: "target1",
                             relationship: InheritanceRelationship.BaseType))));
         }
@@ -493,7 +470,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 3,
                 memberName: "interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -501,7 +478,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 7,
                 memberName: "class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -509,7 +486,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 5,
                 memberName: "event EventHandler IBar.e",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.e",
+                    targetSymbolDisplayName: "event EventHandler Bar.e",
                     locationTag: "target3",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -517,7 +494,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 9,
                 memberName: "event EventHandler Bar.e",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.e",
+                    targetSymbolDisplayName: "event EventHandler IBar.e",
                     locationTag: "target4",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -546,7 +523,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -554,7 +531,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 6,
                 memberName: "class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -562,7 +539,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 4,
                 memberName: "event EventHandler IBar.e1",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.e1",
+                    targetSymbolDisplayName: "event EventHandler Bar.e1",
                     locationTag: "target3",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -570,7 +547,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 4,
                 memberName: "event EventHandler IBar.e2",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.e2",
+                    targetSymbolDisplayName: "event EventHandler Bar.e2",
                     locationTag: "target4",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -578,7 +555,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 8,
                 memberName: "event EventHandler Bar.e1",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.e1",
+                    targetSymbolDisplayName: "event EventHandler IBar.e1",
                     locationTag: "target5",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -586,7 +563,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 8,
                 memberName: "event EventHandler Bar.e2",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.e2",
+                    targetSymbolDisplayName: "event EventHandler IBar.e2",
                     locationTag: "target6",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -623,7 +600,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 13,
                 memberName: "event EventHandler Bar.Eoo",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Eoo",
+                        targetSymbolDisplayName: "event EventHandler IBar.Eoo",
                         locationTag: "target8",
                         relationship: InheritanceRelationship.ImplementedMember))
                 );
@@ -632,7 +609,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 6,
                 memberName: "event EventHandler IBar.Eoo",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.Eoo",
+                        targetSymbolDisplayName: "event EventHandler Bar.Eoo",
                         locationTag: "target7",
                         relationship: InheritanceRelationship.ImplementingMember))
                 );
@@ -641,7 +618,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 5,
                 memberName: "int IBar.Poo { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.Poo",
+                        targetSymbolDisplayName: "int Bar.Poo { get; set; }",
                         locationTag: "target5",
                         relationship: InheritanceRelationship.ImplementingMember))
                 );
@@ -650,7 +627,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 12,
                 memberName: "int Bar.Poo { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Poo",
+                        targetSymbolDisplayName: "int IBar.Poo { get; set; }",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember))
                 );
@@ -659,7 +636,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 4,
                 memberName: "void IBar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.Foo",
+                        targetSymbolDisplayName: "void Bar.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementingMember))
                 );
@@ -668,7 +645,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 11,
                 memberName: "void Bar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "void IBar.Foo()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedMember))
                 );
@@ -677,7 +654,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
+                        targetSymbolDisplayName: "class Bar",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingType))
                 );
@@ -686,7 +663,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 9,
                 memberName: "class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementedInterface))
                 );
@@ -695,7 +672,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 14,
                 memberName: "int Bar.this[int] { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.this",
+                        targetSymbolDisplayName: "int IBar.this[int] { get; set; }",
                         locationTag: "target9",
                         relationship: InheritanceRelationship.ImplementedMember))
                 );
@@ -704,7 +681,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 7,
                 memberName: "int IBar.this[int] { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.this",
+                        targetSymbolDisplayName: "int Bar.this[int] { get; set; }",
                         locationTag: "target10",
                         relationship: InheritanceRelationship.ImplementingMember))
                 );
@@ -748,7 +725,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 12,
                 memberName: "override event EventHandler Bar2.Eoo",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: $"Bar.Eoo",
+                        targetSymbolDisplayName: $"{modifier} event EventHandler Bar.Eoo",
                         locationTag: "target8",
                         relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -756,7 +733,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 6,
                 memberName: $"{modifier} event EventHandler Bar.Eoo",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Eoo",
+                        targetSymbolDisplayName: "override event EventHandler Bar2.Eoo",
                         locationTag: "target7",
                         relationship: InheritanceRelationship.OverridingMember)));
 
@@ -764,7 +741,7 @@ public class {|target2:Bar|} : IBar
                     lineNumber: 11,
                     memberName: "override int Bar2.Poo { get; set; }",
                     targets: ImmutableArray.Create(new TargetInfo(
-                            targetSymbolDisplayName: $"Bar.Poo",
+                            targetSymbolDisplayName: $"{modifier} int Bar.Poo {{ get; set; }}",
                             locationTag: "target6",
                             relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -772,7 +749,7 @@ public class {|target2:Bar|} : IBar
                     lineNumber: 5,
                     memberName: $"{modifier} int Bar.Poo {{ get; set; }}",
                     targets: ImmutableArray.Create(new TargetInfo(
-                            targetSymbolDisplayName: "Bar2.Poo",
+                            targetSymbolDisplayName: "override int Bar2.Poo { get; set; }",
                             locationTag: "target5",
                             relationship: InheritanceRelationship.OverridingMember)));
 
@@ -780,7 +757,7 @@ public class {|target2:Bar|} : IBar
                     lineNumber: 4,
                     memberName: $"{modifier} void Bar.Foo()",
                     targets: ImmutableArray.Create(new TargetInfo(
-                            targetSymbolDisplayName: "Bar2.Foo",
+                            targetSymbolDisplayName: "override void Bar2.Foo()",
                             locationTag: "target3",
                             relationship: InheritanceRelationship.OverridingMember)));
 
@@ -788,7 +765,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 10,
                 memberName: "override void Bar2.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: $"Bar.Foo",
+                        targetSymbolDisplayName: $"{modifier} void Bar.Foo()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -796,7 +773,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar2",
+                        targetSymbolDisplayName: "class Bar2",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.DerivedType)));
 
@@ -804,7 +781,7 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 8,
                 memberName: "class Bar2",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
+                        targetSymbolDisplayName: "class Bar",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.BaseType)));
 
@@ -857,11 +834,11 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 2,
                 memberName: "interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar1",
+                        targetSymbolDisplayName: "class Bar1",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType),
                 new TargetInfo(
-                    targetSymbolDisplayName: "Bar2",
+                    targetSymbolDisplayName: "class Bar2",
                     locationTag: "target5",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -869,11 +846,11 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 4,
                 memberName: "void IBar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar1.Foo",
+                        targetSymbolDisplayName: "virtual void Bar1.Foo()",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Foo",
+                        targetSymbolDisplayName: "override void Bar2.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -881,11 +858,11 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 6,
                 memberName: "class Bar1",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedInterface),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar2",
+                        targetSymbolDisplayName: "class Bar2",
                         locationTag: "target5",
                         relationship: InheritanceRelationship.DerivedType)));
 
@@ -893,11 +870,11 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 8,
                 memberName: "virtual void Bar1.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "void IBar.Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Foo",
+                        targetSymbolDisplayName: "override void Bar2.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.OverridingMember)));
 
@@ -906,11 +883,11 @@ public class {|target2:Bar|} : IBar
                 memberName: "class Bar2",
                 targets: ImmutableArray.Create(
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar1",
+                        targetSymbolDisplayName: "class Bar1",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.BaseType),
                     new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -918,11 +895,11 @@ public class {|target2:Bar|} : IBar
                 lineNumber: 12,
                 memberName: "override void Bar2.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "void IBar.Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar1.Foo",
+                        targetSymbolDisplayName: "virtual void Bar1.Foo()",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -955,7 +932,7 @@ public class {|target1:Bar2|} : IBar<int>, IBar<string>
                 lineNumber: 2,
                 memberName: "interface IBar<T>",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar2",
+                        targetSymbolDisplayName: "class Bar2",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -963,7 +940,7 @@ public class {|target1:Bar2|} : IBar<int>, IBar<string>
                 lineNumber: 4,
                 memberName: "void IBar<T>.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Foo",
+                        targetSymbolDisplayName: "void Bar2.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -972,7 +949,7 @@ public class {|target1:Bar2|} : IBar<int>, IBar<string>
                 lineNumber: 7,
                 memberName: "class Bar2",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar<T>",
+                        targetSymbolDisplayName: "interface IBar<T>",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -981,7 +958,7 @@ public class {|target1:Bar2|} : IBar<int>, IBar<string>
                 lineNumber: 9,
                 memberName: "void Bar2.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar<T>.Foo",
+                        targetSymbolDisplayName: "void IBar<T>.Foo()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1014,7 +991,7 @@ abstract class {|target1:AbsBar|} : IBar<int>
                 lineNumber: 2,
                 memberName: "interface IBar<T>",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "AbsBar",
+                        targetSymbolDisplayName: "class AbsBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1022,7 +999,7 @@ abstract class {|target1:AbsBar|} : IBar<int>
                 lineNumber: 4,
                 memberName: "void IBar<T>.Foo(T)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "AbsBar.IBar<int>.Foo",
+                        targetSymbolDisplayName: "void AbsBar.IBar<int>.Foo(int)",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1030,7 +1007,7 @@ abstract class {|target1:AbsBar|} : IBar<int>
                 lineNumber: 7,
                 memberName: "class AbsBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar<T>",
+                        targetSymbolDisplayName: "interface IBar<T>",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1038,7 +1015,7 @@ abstract class {|target1:AbsBar|} : IBar<int>
                 lineNumber: 9,
                 memberName: "void AbsBar.IBar<int>.Foo(int)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar<T>.Foo",
+                        targetSymbolDisplayName: "void IBar<T>.Foo(T)",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementedMember)
                 ));
@@ -1077,7 +1054,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 2,
                 memberName: "interface I1<T>",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1",
+                        targetSymbolDisplayName: "class Class1",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1085,7 +1062,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 4,
                 memberName: "void I1<T>.M1()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1.M1",
+                        targetSymbolDisplayName: "static void Class1.M1()",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1093,7 +1070,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 11,
                 memberName: "class Class1",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>",
+                        targetSymbolDisplayName: "interface I1<T>",
                         locationTag: "target5",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1101,7 +1078,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 13,
                 memberName: "static void Class1.M1()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>.M1",
+                        targetSymbolDisplayName: "void I1<T>.M1()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1109,7 +1086,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 5,
                 memberName: "int I1<T>.P1 { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1.P1",
+                        targetSymbolDisplayName: "static int Class1.P1 { get; set; }",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1117,7 +1094,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 14,
                 memberName: "static int Class1.P1 { get; set; }",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>.P1",
+                        targetSymbolDisplayName: "int I1<T>.P1 { get; set; }",
                         locationTag: "target7",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1125,7 +1102,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 6,
                 memberName: "event EventHandler I1<T>.e1",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1.e1",
+                        targetSymbolDisplayName: "static event EventHandler Class1.e1",
                         locationTag: "target8",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1133,7 +1110,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 15,
                 memberName: "static event EventHandler Class1.e1",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>.e1",
+                        targetSymbolDisplayName: "event EventHandler I1<T>.e1",
                         locationTag: "target9",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1141,7 +1118,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 7,
                 memberName: "int I1<T>.operator +(T)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1.operator +",
+                        targetSymbolDisplayName: "static int Class1.operator +(Class1)",
                         locationTag: "target10",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1149,7 +1126,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 16,
                 memberName: "static int Class1.operator +(Class1)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>.operator +",
+                        targetSymbolDisplayName: "int I1<T>.operator +(T)",
                         locationTag: "target11",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1157,7 +1134,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 8,
                 memberName: "I1<T>.implicit operator int(T)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Class1.implicit operator int",
+                        targetSymbolDisplayName: "static Class1.implicit operator int(Class1)",
                         locationTag: "target13",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1165,7 +1142,7 @@ public class {|target1:Class1|} : I1<Class1>
                 lineNumber: 17,
                 memberName: "static Class1.implicit operator int(Class1)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "I1<T>.implicit operator int",
+                        targetSymbolDisplayName: "I1<T>.implicit operator int(T)",
                         locationTag: "target12",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1184,55 +1161,6 @@ public class {|target1:Class1|} : I1<Class1>
                 itemForPlusOperatorInClass1,
                 itemForIntOperatorInI1,
                 itemForIntOperatorInClass1);
-        }
-
-        [Fact]
-        public Task TestCSharpPartialClass()
-        {
-            var markup = @"
-interface {|target1:IBar|}
-{ 
-}
-
-public partial class {|target2:Bar|} : IBar
-{
-}
-
-public partial class {|target3:Bar|}
-{
-}
-            ";
-
-            var itemOnLine2 = new TestInheritanceMemberItem(
-                lineNumber: 2,
-                memberName: "interface IBar",
-                targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
-                        relationship: InheritanceRelationship.ImplementingType,
-                        "target2", "target3")));
-
-            var itemOnLine6 = new TestInheritanceMemberItem(
-                lineNumber: 6,
-                memberName: "class Bar",
-                targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
-                        locationTag: "target1",
-                        relationship: InheritanceRelationship.ImplementedInterface)));
-
-            var itemOnLine10 = new TestInheritanceMemberItem(
-                lineNumber: 10,
-                memberName: "class Bar",
-                targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
-                        locationTag: "target1",
-                        relationship: InheritanceRelationship.ImplementedInterface)));
-
-            return VerifyInSingleDocumentAsync(
-                markup,
-                LanguageNames.CSharp,
-                itemOnLine2,
-                itemOnLine6,
-                itemOnLine10);
         }
 
         #endregion
@@ -1268,7 +1196,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IEnumerable",
+                        targetSymbolDisplayName: "Interface IEnumerable",
                         relationship: InheritanceRelationship.ImplementedInterface,
                         inMetadata: true)));
 
@@ -1276,7 +1204,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 5,
                 memberName: "Function Bar.GetEnumerator() As IEnumerator",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IEnumerable.GetEnumerator",
+                        targetSymbolDisplayName: "Function IEnumerable.GetEnumerator() As IEnumerator",
                         relationship: InheritanceRelationship.ImplementedMember,
                         inMetadata: true)));
 
@@ -1296,7 +1224,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "Class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1304,7 +1232,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "Interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1329,7 +1257,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar2",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "Interface IBar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1337,7 +1265,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar2",
+                    targetSymbolDisplayName: "Interface IBar2",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.InheritedInterface)));
             return VerifyInSingleDocumentAsync(markup, LanguageNames.VisualBasic, itemForIBar2, itemForIBar);
@@ -1357,7 +1285,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Class Bar2",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "Class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.DerivedType)));
 
@@ -1365,7 +1293,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar2",
+                    targetSymbolDisplayName: "Class Bar2",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.BaseType)));
             return VerifyInSingleDocumentAsync(markup, LanguageNames.VisualBasic, itemForBar2, itemForBar);
@@ -1401,7 +1329,7 @@ public partial class {|target3:Bar|}
                     memberName: "Class Bar",
                     targets: ImmutableArray.Create(
                         new TargetInfo(
-                            targetSymbolDisplayName: "IEnumerable",
+                            targetSymbolDisplayName: "Interface IEnumerable",
                             relationship: InheritanceRelationship.ImplementedInterface,
                             inMetadata: true))));
         }
@@ -1422,7 +1350,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "Class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1430,7 +1358,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 5,
                 memberName: "Class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "Interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1438,7 +1366,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Event IBar.e As EventHandler",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.e",
+                    targetSymbolDisplayName: "Event Bar.e As EventHandler",
                     locationTag: "target3",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1446,7 +1374,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 7,
                 memberName: "Event Bar.e As EventHandler",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.e",
+                    targetSymbolDisplayName: "Event IBar.e As EventHandler",
                     locationTag: "target4",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1475,7 +1403,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "Class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1483,7 +1411,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 5,
                 memberName: "Class Bar",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "Interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1491,7 +1419,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Event IBar.e As EventHandler",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.e",
+                    targetSymbolDisplayName: "Event Bar.e As EventHandler",
                     locationTag: "target3",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1499,7 +1427,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 7,
                 memberName: "Event Bar.e As EventHandler",
                 ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.e",
+                    targetSymbolDisplayName: "Event IBar.e As EventHandler",
                     locationTag: "target4",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1538,7 +1466,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar",
+                    targetSymbolDisplayName: "Class Bar",
                     locationTag: "target1",
                     relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1546,7 +1474,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 7,
                 memberName: "Class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar",
+                    targetSymbolDisplayName: "Interface IBar",
                     locationTag: "target2",
                     relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1554,7 +1482,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Property IBar.Poo As Integer",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.Poo",
+                    targetSymbolDisplayName: "Property Bar.Poo As Integer",
                     locationTag: "target3",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1562,7 +1490,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 9,
                 memberName: "Property Bar.Poo As Integer",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.Poo",
+                    targetSymbolDisplayName: "Property IBar.Poo As Integer",
                     locationTag: "target4",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1570,7 +1498,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Function IBar.Foo() As Integer",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "Bar.Foo",
+                    targetSymbolDisplayName: "Function Bar.Foo() As Integer",
                     locationTag: "target5",
                     relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1578,7 +1506,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 16,
                 memberName: "Function Bar.Foo() As Integer",
                 targets: ImmutableArray.Create(new TargetInfo(
-                    targetSymbolDisplayName: "IBar.Foo",
+                    targetSymbolDisplayName: "Function IBar.Foo() As Integer",
                     locationTag: "target6",
                     relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1610,7 +1538,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Class Bar1",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: $"Bar",
+                        targetSymbolDisplayName: $"Class Bar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.DerivedType)));
 
@@ -1618,7 +1546,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 6,
                 memberName: "Class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar1",
+                        targetSymbolDisplayName: "Class Bar1",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.BaseType)));
 
@@ -1626,7 +1554,7 @@ public partial class {|target3:Bar|}
                     lineNumber: 3,
                     memberName: "MustOverride Sub Bar1.Foo()",
                     targets: ImmutableArray.Create(new TargetInfo(
-                            targetSymbolDisplayName: "Bar.Foo",
+                            targetSymbolDisplayName: "Overrides Sub Bar.Foo()",
                             locationTag: "target3",
                             relationship: InheritanceRelationship.OverridingMember)));
 
@@ -1634,7 +1562,7 @@ public partial class {|target3:Bar|}
                     lineNumber: 8,
                     memberName: "Overrides Sub Bar.Foo()",
                     targets: ImmutableArray.Create(new TargetInfo(
-                            targetSymbolDisplayName: "Bar1.Foo",
+                            targetSymbolDisplayName: "MustOverride Sub Bar1.Foo()",
                             locationTag: "target4",
                             relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -1688,49 +1616,47 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar1",
+                        targetSymbolDisplayName: "Class Bar1",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType),
-                    new TargetInfo(
-                        targetSymbolDisplayName: "Bar2",
-                        locationTag: "target5",
-                        relationship: InheritanceRelationship.ImplementingType)));
+                new TargetInfo(
+                    targetSymbolDisplayName: "Class Bar2",
+                    locationTag: "target5",
+                    relationship: InheritanceRelationship.ImplementingType)));
 
             var itemForFooInIBar = new TestInheritanceMemberItem(
                 lineNumber: 3,
                 memberName: "Sub IBar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar1.Foo",
+                        targetSymbolDisplayName: "Overridable Sub Bar1.Foo()",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Foo",
+                        targetSymbolDisplayName: "Overrides Sub Bar2.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
             var itemForBar1 = new TestInheritanceMemberItem(
                 lineNumber: 6,
                 memberName: "Class Bar1",
-                targets: ImmutableArray.Create(
-                    new TargetInfo(
-                        targetSymbolDisplayName: "Bar2",
-                        locationTag: "target5",
-                        relationship: InheritanceRelationship.DerivedType),
-                    new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                targets: ImmutableArray.Create(new TargetInfo(
+                        targetSymbolDisplayName: "Interface IBar",
                         locationTag: "target4",
-                        relationship: InheritanceRelationship.ImplementedInterface)
-                    ));
+                        relationship: InheritanceRelationship.ImplementedInterface),
+                    new TargetInfo(
+                        targetSymbolDisplayName: "Class Bar2",
+                        locationTag: "target5",
+                        relationship: InheritanceRelationship.DerivedType)));
 
             var itemForFooInBar1 = new TestInheritanceMemberItem(
                 lineNumber: 8,
                 memberName: "Overridable Sub Bar1.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "Sub IBar.Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar2.Foo",
+                        targetSymbolDisplayName: "Overrides Sub Bar2.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.OverridingMember)));
 
@@ -1739,11 +1665,11 @@ public partial class {|target3:Bar|}
                 memberName: "Class Bar2",
                 targets: ImmutableArray.Create(
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar1",
+                        targetSymbolDisplayName: "Class Bar1",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.BaseType),
                     new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "Interface IBar",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1751,11 +1677,11 @@ public partial class {|target3:Bar|}
                 lineNumber: 14,
                 memberName: "Overrides Sub Bar2.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "Sub IBar.Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember),
                     new TargetInfo(
-                        targetSymbolDisplayName: "Bar1.Foo",
+                        targetSymbolDisplayName: "Overridable Sub Bar1.Foo()",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.OverriddenMember)));
 
@@ -1795,7 +1721,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 2,
                 memberName: "Interface IBar(Of T)",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
+                        targetSymbolDisplayName: "Class Bar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1803,11 +1729,11 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Sub IBar(Of T).Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.Foo",
+                        targetSymbolDisplayName: "Sub Bar.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementingMember),
                         new TargetInfo(
-                            targetSymbolDisplayName: "Bar.IBar_Foo",
+                            targetSymbolDisplayName: "Sub Bar.IBar_Foo()",
                             locationTag: "target4",
                             relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1815,7 +1741,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 6,
                 memberName: "Class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar(Of T)",
+                        targetSymbolDisplayName: "Interface IBar(Of T)",
                         locationTag: "target5",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1823,7 +1749,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 10,
                 memberName: "Sub Bar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar(Of T).Foo",
+                        targetSymbolDisplayName: "Sub IBar(Of T).Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1831,7 +1757,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 14,
                 memberName: "Sub Bar.IBar_Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar(Of T).Foo",
+                        targetSymbolDisplayName: "Sub IBar(Of T).Foo()",
                         locationTag: "target6",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1871,7 +1797,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 5,
                 memberName: "class Bar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "Interface IBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1879,7 +1805,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 7,
                 memberName: "void Bar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "Sub IBar.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1887,7 +1813,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 3,
                 memberName: "Interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar",
+                        targetSymbolDisplayName: "class Bar",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1895,7 +1821,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Sub IBar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar.Foo",
+                        targetSymbolDisplayName: "void Bar.Foo()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
@@ -1933,7 +1859,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "Class Bar44",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar",
+                        targetSymbolDisplayName: "interface IBar",
                         locationTag: "target1",
                         relationship: InheritanceRelationship.ImplementedInterface)));
 
@@ -1941,7 +1867,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 7,
                 memberName: "Sub Bar44.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "IBar.Foo",
+                        targetSymbolDisplayName: "void IBar.Foo()",
                         locationTag: "target3",
                         relationship: InheritanceRelationship.ImplementedMember)));
 
@@ -1949,7 +1875,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 4,
                 memberName: "interface IBar",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar44",
+                        targetSymbolDisplayName: "Class Bar44",
                         locationTag: "target2",
                         relationship: InheritanceRelationship.ImplementingType)));
 
@@ -1957,7 +1883,7 @@ public partial class {|target3:Bar|}
                 lineNumber: 6,
                 memberName: "void IBar.Foo()",
                 targets: ImmutableArray.Create(new TargetInfo(
-                        targetSymbolDisplayName: "Bar44.Foo",
+                        targetSymbolDisplayName: "Sub Bar44.Foo()",
                         locationTag: "target4",
                         relationship: InheritanceRelationship.ImplementingMember)));
 
